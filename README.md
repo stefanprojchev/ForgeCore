@@ -1,99 +1,121 @@
 # ForgeCore
 
-Thread-safe utilities for Swift concurrency — `LockedState` and `SendableFileManager`.
+Thread-safe primitives for iOS Swift packages.
+
+![Swift 6.3+](https://img.shields.io/badge/Swift-6.3+-orange.svg)
+![iOS 18+](https://img.shields.io/badge/iOS-18+-blue.svg)
+![macOS 15+](https://img.shields.io/badge/macOS-15+-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
+[![Release](https://img.shields.io/github/v/release/stefanprojchev/ForgeCore)](https://github.com/stefanprojchev/ForgeCore/releases)
+
+---
+
+ForgeCore is the shared foundation for the **Forge** family of iOS packages. It provides a small, focused set of thread-safe primitives built on Swift 6's `Synchronization` framework.
+
+Most consumers use ForgeCore indirectly through other Forge packages. You only import it directly when you need its primitives in your own code.
+
+## Features
+
+- **`LockedState<State>`** — thread-safe mutable state container wrapping `Mutex<State>` from the standard library `Synchronization` framework. Typed-throws, `sending` parameter semantics, no `@unchecked Sendable` escape hatches.
+- **`SendableFileManager`** — a `Sendable`-conforming wrapper around `FileManager` for safe use in concurrent contexts.
+- **Zero dependencies** — ForgeCore has no external dependencies beyond the Swift standard library and Foundation.
 
 ## Requirements
 
-- iOS 16+
-- Swift 6.0+
+- **iOS** 18+
+- **macOS** 15+
+- **Swift** 6.3+ (Xcode 26 or later)
 
 ## Installation
 
-### Swift Package Manager
+### Xcode
 
-Add ForgeCore to your project via Xcode:
+1. **File → Add Package Dependencies…**
+2. Paste `https://github.com/stefanprojchev/ForgeCore.git`
+3. Set rule to **Up to Next Major** from `1.0.0`
 
-1. **File > Add Package Dependencies...**
-2. Enter the repository URL
-3. Select the version rule and add to your target
-
-Or add it directly to your `Package.swift`:
+### Package.swift
 
 ```swift
 dependencies: [
     .package(url: "https://github.com/stefanprojchev/ForgeCore.git", from: "1.0.0")
+],
+targets: [
+    .target(
+        name: "YourApp",
+        dependencies: ["ForgeCore"]
+    )
 ]
 ```
 
 ## Quick Start
 
+### LockedState
+
 ```swift
 import ForgeCore
 
-// Thread-safe mutable state
-let counter = LockedState(0)
-counter.withLock { $0 += 1 }
-let value = counter.withLock { $0 } // 1
+// Thread-safe mutable state — no locks, no @unchecked, no races.
+let cache = LockedState<[String: User]>([:])
 
-// Sendable file manager
-let fm = SendableFileManager()
-if fm.fileExists(atPath: "/tmp/data.json") {
-    try fm.removeItem(at: URL(fileURLWithPath: "/tmp/data.json"))
+cache.withLock { dict in
+    dict["alice"] = User(name: "Alice")
+}
+
+let alice = cache.withLock { $0["alice"] }
+```
+
+Typed-throws propagate concrete error types:
+
+```swift
+enum CacheError: Error { case full }
+
+do {
+    try cache.withLock { (dict: inout [String: User]) throws(CacheError) in
+        guard dict.count < 100 else { throw CacheError.full }
+        dict["bob"] = User(name: "Bob")
+    }
+} catch {
+    // error is statically typed as CacheError
 }
 ```
 
-## LockedState
-
-A thread-safe mutable state container backed by `NSLock`. The enclosing type can be plain `Sendable` — the wrapped `State` does not need to conform to `Sendable` itself.
+### SendableFileManager
 
 ```swift
-let state = LockedState(MyMutableState())
+import ForgeCore
 
-// Exclusive read/write access
-state.withLock { $0.count += 1 }
-
-// Return values from the lock
-let snapshot = state.withLock { $0 }
-
-// Throwing closures are supported
-try state.withLock { try $0.validate() }
-```
-
-## SendableFileManager
-
-A `Sendable` wrapper around `FileManager.default` conforming to the `FileManaging` protocol. Use it anywhere you need file system operations in a concurrent context.
-
-```swift
 let fm = SendableFileManager()
 
-fm.fileExists(atPath: path)
-try fm.createDirectory(at: url, withIntermediateDirectories: true)
-try fm.copyItem(at: source, to: destination)
-try fm.moveItem(at: source, to: destination)
-try fm.removeItem(at: url)
+// Pass freely across isolation domains — it's Sendable.
+actor FileService {
+    let fm: FileManaging
+
+    init(fm: FileManaging = SendableFileManager()) {
+        self.fm = fm
+    }
+
+    func exists(_ path: String) -> Bool {
+        fm.fileExists(atPath: path)
+    }
+}
 ```
 
-The `FileManaging` protocol enables dependency injection — swap in a mock for tests.
+## The Forge Family
 
-## Thread Safety
-
-`LockedState` uses `NSLock` for exclusive access. `SendableFileManager` delegates to `FileManager.default`, which Apple documents as thread-safe. Both types conform to `Sendable`.
-
-## Forge Ecosystem
-
-ForgeCore is part of the **Forge** family of Swift packages for iOS:
+ForgeCore is part of the **Forge** family of Swift packages for iOS.
 
 | Package | Description |
-|---------|-------------|
-| **ForgeCore** | Thread-safe utilities — `LockedState` and `SendableFileManager` |
-| [ForgeInject](https://github.com/stefanprojchev/ForgeInject) | Lightweight dependency injection with property wrapper |
-| [ForgeObservers](https://github.com/stefanprojchev/ForgeObservers) | Reactive system observers (connectivity, lifecycle, keyboard, and more) |
-| [ForgeStorage](https://github.com/stefanprojchev/ForgeStorage) | Type-safe persistence — key-value, file storage, and Keychain |
-| [ForgeBackgroundTasks](https://github.com/stefanprojchev/ForgeBackgroundTasks) | BGTaskScheduler registration, scheduling, and dispatch |
-| [ForgeLocation](https://github.com/stefanprojchev/ForgeLocation) | Location-based triggers — geofencing, significant changes, visits |
-| [ForgePush](https://github.com/stefanprojchev/ForgePush) | Push notification management — permissions, tokens, silent and visible routing |
-| [ForgeOrchestrator](https://github.com/stefanprojchev/ForgeOrchestrator) | Sequence, pipeline, and monitor orchestrators for iOS app flows |
+|---|---|
+| **ForgeCore** | Thread-safe primitives for iOS Swift packages. |
+| [ForgeInject](https://github.com/stefanprojchev/ForgeInject) | Dependency injection with constructor and property wrapper support. |
+| [ForgeObservers](https://github.com/stefanprojchev/ForgeObservers) | Reactive system observers — connectivity, lifecycle, keyboard, and more. |
+| [ForgeStorage](https://github.com/stefanprojchev/ForgeStorage) | Type-safe key-value, file, and Keychain storage. |
+| [ForgeOrchestrator](https://github.com/stefanprojchev/ForgeOrchestrator) | Orchestrate app flows — startup gates, data pipelines, and continuous monitors. |
+| [ForgePush](https://github.com/stefanprojchev/ForgePush) | Push notification management — permissions, tokens, and routing. |
+| [ForgeLocation](https://github.com/stefanprojchev/ForgeLocation) | Location triggers — geofencing, significant changes, and visits. |
+| [ForgeBackgroundTasks](https://github.com/stefanprojchev/ForgeBackgroundTasks) | Background task scheduling and dispatch. |
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+ForgeCore is released under the MIT License. See [LICENSE](LICENSE).
