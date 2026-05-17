@@ -7,17 +7,11 @@ import Synchronization
 /// The underlying `Mutex` is `Sendable`, which makes `LockedState` `Sendable` without any
 /// `@unchecked` escape hatches.
 public final class LockedState<State>: Sendable {
-    // MARK: - Properties
-
     private let mutex: Mutex<State>
-
-    // MARK: - Initialization
 
     public init(_ initial: sending State) {
         self.mutex = Mutex(initial)
     }
-
-    // MARK: - Implementation
 
     /// Acquires the lock, runs `body` with exclusive access to the protected state, and releases the lock.
     /// Supports throwing closures via typed throws — non-throwing closures use `throws(Never)` and need no `try`.
